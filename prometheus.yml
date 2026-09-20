@@ -1,0 +1,40 @@
+# Prometheus scrape configuration for PerfLab.
+#
+# Exists so the PromQL adapter can be exercised against a real Prometheus rather
+# than a fake HTTP client. DESIGN.md section 16 puts "PromQL adapter against local
+# Prometheus" in week 2, and until this file existed the adapter's series names
+# were asserted correct but never observed correct -- which is precisely the
+# failure the adapter is designed around, since a wrong series name returns no
+# data and the collector honestly reports "never measured".
+#
+# The scrape interval is 5s, not the 15s default. Crucible samples gauges once a
+# second during a run and reads timers at window boundaries; at 15s a 60s measured
+# window would contain four scrapes, and `pending` -- which spikes and drains --
+# would be sampled too coarsely to show its peak. 5s costs almost nothing at this
+# cardinality and keeps the PromQL path comparable with the Actuator one.
+#
+# NOTE ON COLD METERS: Micrometer registers several HikariCP meters lazily.
+# `hikaricp_connections_acquire_seconds_*` and `hikaricp_connections_active` do
+# NOT exist until the pool has actually been used -- verified on Box A on
+# 20 September 2026, where both were absent on an idle target and both appeared
+# after 25 requests to /api/db. This is a second reason the warmup phase matters:
+# it registers the meters as well as warming the JIT.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+  external_labels:
+    environment: oracle-ashburn-boxa
+
+scrape_configs:
+  - job_name: perflab
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # Host networking, so the target is plain loopback.
+      - targets: ["127.0.0.1:8080"]
+        labels:
+          # Actuator pins load to one instance (DESIGN.md section 5), so the
+          # instance label is what the PromQL adapter's selector matches on.
+          # Without it a multi-instance scrape would sum meters across instances
+          # and a summed acquire-time mean is not a quantity that means anything.
+          service: perf-lab

@@ -9,7 +9,9 @@ import dev.crucible.perflab.fixture.LedgerService;
 import dev.crucible.perflab.fixture.OrderService;
 import dev.crucible.perflab.fixture.PayloadService;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -62,6 +64,14 @@ public class PerfController {
     @Value("${spring.datasource.hikari.maximum-pool-size}")
     private int poolSize;
 
+    // ObjectProvider, not a plain injection: build-info.properties is written by
+    // the spring-boot-maven-plugin's build-info goal, so it is absent when the
+    // app is started straight from an IDE. An absent bean must degrade to a null
+    // commit, not fail startup -- the target staying up while reporting "I
+    // cannot tell you what I am" is exactly the behaviour 19.6 wants, because
+    // Crucible then declines to measure it.
+    private final ObjectProvider<BuildProperties> buildProperties;
+
     public PerfController(ItemRepository itemRepository,
                           OrderService orderService,
                           CatalogService catalogService,
@@ -69,7 +79,8 @@ public class PerfController {
                           LedgerService ledgerService,
                           ChurnService churnService,
                           AsyncWorkService asyncWorkService,
-                          PayloadService payloadService) {
+                          PayloadService payloadService,
+                          ObjectProvider<BuildProperties> buildProperties) {
         this.itemRepository = itemRepository;
         this.orderService = orderService;
         this.catalogService = catalogService;
@@ -78,6 +89,7 @@ public class PerfController {
         this.churnService = churnService;
         this.asyncWorkService = asyncWorkService;
         this.payloadService = payloadService;
+        this.buildProperties = buildProperties;
     }
 
     /**
@@ -163,9 +175,38 @@ public class PerfController {
         return payloadService.generate(rows);
     }
 
-    /** App identity and the current pool size (read from resolved config / env). */
+    /**
+     * App identity, the current pool size, and the commit this jar was built from.
+     *
+     * <p>Crucible polls this after a deploy and refuses to start measuring until
+     * {@code commit} matches the sha it pushed (DESIGN.md 19.6). {@code poolSize}
+     * is read from resolved config rather than from the properties file, so it
+     * reports what is actually in force -- during the K1 cloud run that is what
+     * caught a "pool=20" measurement taken against a still-running pool=2 JVM.
+     */
     @GetMapping("/version")
     public VersionInfo version() {
-        return new VersionInfo(appName, version, poolSize);
+        return new VersionInfo(appName, version, poolSize, buildCommit());
+    }
+
+    /**
+     * The build's git sha, or null when this jar cannot say what it was built from.
+     *
+     * <p>Null rather than "unknown" or an empty string: Crucible treats a null
+     * commit as "the target cannot prove its version" and blocks the measurement,
+     * whereas any non-null placeholder would have to be special-cased by every
+     * reader, and the one reader that forgot would measure the wrong build.
+     */
+    private String buildCommit() {
+        BuildProperties properties = buildProperties.getIfAvailable();
+        if (properties == null) {
+            return null;
+        }
+        String commit = properties.get("commit");
+        if (commit == null) {
+            return null;
+        }
+        String trimmed = commit.trim();
+        return (trimmed.isEmpty() || "unknown".equalsIgnoreCase(trimmed)) ? null : trimmed;
     }
 }

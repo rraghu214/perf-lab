@@ -3,10 +3,10 @@
 #   docker compose -f perf-lab/docker-compose.yml up -d
 #   ./mvnw spring-boot:run -Dspring-boot.run.profiles=lab
 #
-# Three containers, ~384 MB. Prometheus and Jaeger are part of the six-container
-# target stack in DESIGN.md section 16 but belong to weeks 2 and 3 -- they are
-# not needed by any week 1 fixture, and starting them now would just be memory
-# the load generator wants.
+# Four containers, ~640 MB. Prometheus joined in week 2 so the PromQL adapter can
+# be exercised against a real server rather than a fake HTTP client; Jaeger is
+# week 3 and is still absent, because nothing yet reads traces and an unused
+# container is just memory the load generator wants.
 #
 # Every port binds to 127.0.0.1 ONLY. On a cloud box with a public IP, a
 # bare "5432:5432" binds all interfaces, and the only thing between an
@@ -69,3 +69,38 @@ services:
       resources:
         limits:
           memory: 64M
+
+  prometheus:
+    # Week 2. Present so "PromQL adapter against local Prometheus" (DESIGN.md
+    # section 16) is a thing that was observed rather than asserted: until this
+    # existed, every PromQL test used a fake client, so the profile's series
+    # names were never checked against a server that actually has them.
+    image: prom/prometheus:v2.54.1
+    container_name: perflab-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      # 2h is far longer than any measured window and keeps the footprint small.
+      # Crucible reads instant queries during a run; it is not a long-term store,
+      # and retention here is not a claim about what History can show later.
+      - "--storage.tsdb.retention.time=2h"
+      - "--web.enable-lifecycle"
+      # Loopback only. `network_mode: host` ignores a `ports:` mapping, so the
+      # bind discipline every other service here gets from "127.0.0.1:x:x" has
+      # to be stated on the command line instead. Prometheus has no auth; on a
+      # box with a public IP the only thing between it and the internet would
+      # otherwise be a correctly-configured firewall, and this file's whole
+      # convention is not to rely on that alone.
+      - "--web.listen-address=127.0.0.1:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # Host networking, not the bridge. The Spring target runs on the HOST, and
+    # Box A's iptables ends in a blanket REJECT -- so a container on the docker
+    # bridge gets "no route to host" reaching the host's :8080 (observed on
+    # 20 September 2026). The alternatives were to punch a firewall hole for
+    # 172.17.0.0/16 or to share the host's network namespace; the latter needs
+    # no change to the firewall at all, which is the smaller blast radius.
+    network_mode: host
+    deploy:
+      resources:
+        limits:
+          memory: 256M

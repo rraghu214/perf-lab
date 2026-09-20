@@ -19,6 +19,26 @@
 
     <properties>
         <java.version>21</java.version>
+
+        <!-- The git sha this jar was built from, surfaced by GET /api/version.
+
+             DESIGN.md 19.6: no measurement may begin until the target proves it
+             is running the commit that was deployed. Measuring before a deploy
+             lands attributes the OLD configuration's numbers to the NEW change,
+             and the resulting figure is perfectly plausible, so nothing
+             downstream catches it. This is not hypothetical: a full set of
+             pool=20 measurements during the K1 cloud run was taken against a
+             target that had never been restarted (docs/K1_CLOUD_RESULT.md 6).
+
+             The deploy script passes the real value:
+                 ./mvnw -B -Dperflab.commit=$(git rev-parse HEAD) package
+
+             Left as "unknown" on an ordinary build, which /api/version reports
+             as a null commit, and Crucible then refuses to measure. That is
+             the intended failure: a build that cannot say what it is must not
+             be measured, and guessing is the failure mode this field exists
+             to close. -->
+        <perflab.commit>unknown</perflab.commit>
     </properties>
 
     <dependencies>
@@ -79,6 +99,23 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <!-- Writes META-INF/build-info.properties, which Spring Boot
+                         binds to a BuildProperties bean. `commit` rides along as
+                         an additional property, so the sha has one source rather
+                         than a second copy kept in step by hand. -->
+                    <execution>
+                        <id>build-info</id>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                        <configuration>
+                            <additionalProperties>
+                                <commit>${perflab.commit}</commit>
+                            </additionalProperties>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
