@@ -24,6 +24,7 @@ public class PerfLabProperties {
     private final Cache cache = new Cache();
     private final Downstream downstream = new Downstream();
     private final Churn churn = new Churn();
+    private final Slow slow = new Slow();
 
     public String getVersion() {
         return version;
@@ -43,6 +44,10 @@ public class PerfLabProperties {
 
     public Churn getChurn() {
         return churn;
+    }
+
+    public Slow getSlow() {
+        return slow;
     }
 
     public static class Cache {
@@ -118,6 +123,19 @@ public class PerfLabProperties {
 
         public void setRetainedObjects(int retainedObjects) {
             this.retainedObjects = retainedObjects;
+        }
+    }
+
+    public static class Slow {
+        /** Handler sleep in milliseconds. Raise this to inject application-code latency. */
+        private int delayMs = 200;
+
+        public int getDelayMs() {
+            return delayMs;
+        }
+
+        public void setDelayMs(int delayMs) {
+            this.delayMs = delayMs;
         }
     }
 }
