@@ -84,13 +84,14 @@ services:
       # and retention here is not a claim about what History can show later.
       - "--storage.tsdb.retention.time=2h"
       - "--web.enable-lifecycle"
-      # Loopback only. `network_mode: host` ignores a `ports:` mapping, so the
-      # bind discipline every other service here gets from "127.0.0.1:x:x" has
-      # to be stated on the command line instead. Prometheus has no auth; on a
-      # box with a public IP the only thing between it and the internet would
-      # otherwise be a correctly-configured firewall, and this file's whole
-      # convention is not to rely on that alone.
-      - "--web.listen-address=127.0.0.1:9090"
+      # Bind to the private VCN IP only (not loopback, not 0.0.0.0).
+      # 127.0.0.1 would block Box B from reaching Prometheus for PromQL queries.
+      # 0.0.0.0 would expose Prometheus (no auth) on the public interface.
+      # 10.0.0.79 is Box A's private IP -- reachable from Box B on the VCN subnet
+      # (NSG rule: TCP 9090 from 10.0.0.8/32) but invisible to the internet.
+      # `network_mode: host` ignores a `ports:` mapping, so this flag is the
+      # only knob available.
+      - "--web.listen-address=10.0.0.79:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     # Host networking, not the bridge. The Spring target runs on the HOST, and
