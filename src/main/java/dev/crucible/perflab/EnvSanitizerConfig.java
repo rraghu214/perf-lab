@@ -42,7 +42,8 @@ public class EnvSanitizerConfig {
             "spring.jpa.properties.hibernate.jdbc.batch_size",
             "spring.jpa.properties.hibernate.default_batch_fetch_size",
             "perflab.cache.enabled",
-            "perflab.downstream.timeout-ms");
+            "perflab.downstream.timeout-ms",
+            "perflab.jvm.heap-max-mb");
 
     private static final String[] SENSITIVE = {"password", "secret", "key", "token", "credential"};
 

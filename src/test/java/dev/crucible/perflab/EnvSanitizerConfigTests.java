@@ -26,6 +26,7 @@ class EnvSanitizerConfigTests {
     void aTunableCrucibleReadsBackIsShown() {
         assertThat(shown("spring.datasource.hikari.maximum-pool-size", "20")).isEqualTo("20");
         assertThat(shown("server.tomcat.threads.max", "200")).isEqualTo("200");
+        assertThat(shown("perflab.jvm.heap-max-mb", "1024")).isEqualTo("1024");
     }
 
     @Test
@@ -52,7 +53,7 @@ class EnvSanitizerConfigTests {
 
     @Test
     void everyListedTunableIsVisible() {
-        // None of today's twelve names looks like a credential; if one ever
+        // None of today's thirteen names looks like a credential; if one ever
         // does, this fails and someone decides deliberately.
         for (String key : EnvSanitizerConfig.VISIBLE) {
             assertThat(EnvSanitizerConfig.visible(key)).as(key).isTrue();
