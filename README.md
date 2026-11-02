@@ -1,6 +1,6 @@
 # PerfLab
 
-A Spring Boot service that is **deliberately easy to make slow**, in eight
+A Spring Boot service that is **deliberately easy to make slow**, in nine
 specific and different ways.
 
 It exists to be the target of [Crucible](https://github.com/rraghu214/crucible),
@@ -26,10 +26,20 @@ performance failure you can reproduce in one command.
 | `/api/downstream` | `downstream_latency` | a slow third party (httpbin `/delay`) |
 | `/api/ledger` | `lock_contention` | a synchronised section under concurrent load |
 | `/api/payload` | `payload_serialization` | serialises thousands of rows per request |
+| `/api/slow` | `application_code` | slow business logic: sleeps `perflab.slow.delay-ms` (200 ms baseline) with no database or pool involved |
+| `/api/version` | — | not a fault: app name, the pool size in force and the commit the jar was built from (see below) |
 
 The families are not decoration. An agent diagnosing this service has to name
 which one it is, and a fixture whose cause is ambiguous teaches nothing — so each
 endpoint fails for one reason and responds to one fix.
+
+## The demo baseline: the pool is starved on purpose
+
+`main` ships with **one** bottleneck switched on: `spring.datasource.hikari.maximum-pool-size=2`.
+Under 50–100 users `/api/db` queues for a connection and its p99 runs to seconds. A fresh
+checkout is therefore exactly the state Crucible's demo starts from, and raising the pool
+(10–20 is healthy) is the fix it is expected to find. Every other setting is healthy.
+Benchmark fixtures do not rely on this default: each one writes its own state.
 
 ## Running it
 
@@ -95,10 +105,29 @@ bare series name returns many series rather than one. They need aggregating — 
 `count` and `sum` add up while `max` does not: the slowest request in a service
 is the largest per-URI maximum, not the total of them.
 
+## How Crucible drives it
+
+1. Crucible loads one endpoint (the demo uses `/api/db`) with Locust and reads
+   HikariCP, Tomcat and JVM meters from `/actuator/metrics` while the load runs.
+2. It proposes one change to `src/main/resources/application.properties`, inside
+   the bounds its own target profile allows.
+3. The change is one commit on the `perftest_sandbox` branch, never on `main`.
+   Pushing that branch triggers the deploy: on the capstone's Oracle box a git
+   post-receive hook builds the jar with its commit and restarts the service; in a
+   real shop it would be Jenkins or GitHub Actions.
+4. Crucible measures nothing until `/api/version` reports the commit it pushed, and
+   reads the changed value back from `/actuator/env` (values are masked except
+   Crucible's tunables).
+5. It re-measures under the identical load and keeps or reverts the change.
+
+Metrics can also go to **Datadog**: run with the `datadog` profile and
+`DATADOG_API_KEY` set (`application-datadog.properties`); Micrometer pushes straight
+to Datadog's API, no Agent needed.
+
 ## Configuration the agent is allowed to change
 
 Crucible may tune a small allowlist — pool sizes, timeouts, thread pools, batch
-fetch sizes, the cache toggle — declared in Crucible's own target profile, with
+fetch sizes, the cache toggle, the JVM heap — declared in Crucible's own target profile, with
 bounds, and never here. Listing a knob in `application.properties` grants
 nothing. That separation is the point: the service describes itself, and
 something else decides what may be touched.

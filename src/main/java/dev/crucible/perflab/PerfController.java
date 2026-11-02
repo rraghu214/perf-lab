@@ -10,6 +10,7 @@ import dev.crucible.perflab.fixture.OrderService;
 import dev.crucible.perflab.fixture.PayloadService;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,7 @@ import java.util.Map;
  *   <tr><td>/api/downstream</td><td>downstream_latency</td></tr>
  *   <tr><td>/api/ledger</td>    <td>lock_contention</td></tr>
  *   <tr><td>/api/payload</td>   <td>payload_serialization</td></tr>
+ *   <tr><td>/api/slow</td>     <td>application_code</td></tr>
  * </table>
  */
 @RestController
@@ -54,6 +56,9 @@ public class PerfController {
     private final ChurnService churnService;
     private final AsyncWorkService asyncWorkService;
     private final PayloadService payloadService;
+
+    @Autowired
+    private PerfLabProperties perfLabProperties;
 
     @Value("${spring.application.name}")
     private String appName;
@@ -173,6 +178,24 @@ public class PerfController {
     @GetMapping("/payload")
     public List<CatalogEntry> payload(@RequestParam(defaultValue = "5000") int rows) {
         return payloadService.generate(rows);
+    }
+
+    /**
+     * Cause family: application_code.
+     *
+     * <p>Simulates slow business logic — a CPU-heavy computation, an unoptimised
+     * algorithm, or a blocking call that does not go near the database or the pool.
+     * {@code perflab.slow.delay-ms} sets the handler sleep; the fixture commits a
+     * value that makes the SLA miss visible under load.
+     */
+    @GetMapping("/slow")
+    public Map<String, Object> slow() throws InterruptedException {
+        int delay = perfLabProperties.getSlow().getDelayMs();
+        Thread.sleep(delay);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("delay_ms", delay);
+        body.put("timestamp", Instant.now().toString());
+        return body;
     }
 
     /**
